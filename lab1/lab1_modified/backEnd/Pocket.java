@@ -45,15 +45,17 @@ public class Pocket {
      * @return a string representing the pocket
      */
     public String getPocket() throws Exception {
-        StringBuilder sb = new StringBuilder();
-        this.file.seek(0);
-        String line;
-        while((line = this.file.readLine()) != null) {
-            sb.append(line);
-            sb.append('\n');
-        }
+        try (FileLock lock = channel.lock(0, Long.MAX_VALUE, true)) {  // shared lock
+            StringBuilder sb = new StringBuilder();
+            this.file.seek(0);
+            String line;
+            while((line = this.file.readLine()) != null) {
+                sb.append(line);
+                sb.append('\n');
+            }
 
-        return sb.toString();
+            return sb.toString();
+        }
     }
 
     /**
